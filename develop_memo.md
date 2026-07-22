@@ -400,7 +400,7 @@ WebSocket は切断中のイベント配信を保証しません。
 利用可能なアイコン一覧を返します。アイコンは設定ファイルに静的に登録し、サーバー起動中は `id` を変更しません。`id` は公開ユーザー情報の `icon_id` と対応します。
 アイコン数は少数の固定セットを想定するため、ページングは行いません。
 
-`url` はフロントエンドがそのまま画像の `src` に指定できる絶対 URL、`alt` は`name`がそれに該当します。
+`assets_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`name`がそれに該当します。
 
 ```json
 {
@@ -408,7 +408,7 @@ WebSocket は切断中のイベント配信を保証しません。
         {
             "id": 1,
             "name": "default",
-            "url": "https://example.com/assets/icons/default.png"
+            "assets_path": "assets/icons/default.svg"
         }
     ]
 }
@@ -418,17 +418,17 @@ WebSocket は切断中のイベント配信を保証しません。
 
 `GET` `/api/v1/custom_emojis`
 
-利用可能なアイコン一覧を返します。アイコンは設定ファイルに静的に登録します。
-アイコン数は少数の固定セットを想定するため、ページングは行いません。
+利用可能なカスタム絵文字一覧を返します。カスタム絵文字は設定ファイルに静的に登録します。
+カスタム絵文字は少数の固定セットを想定するため、ページングは行いません。
 
-`url` はフロントエンドがそのまま画像の `src` に指定できる絶対 URLです。`alt` は`short_code`がそれに該当します。
+`assets_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`short_code`がそれに該当します。
 
 ```json
 {
     "items": [
         {
-            "shortcode": "ohayo",
-            "url": "https://example.com/assets/emojis/ohayo.png"
+            "shortcode": "blank",
+            "assets_path": "assets/emojis/blank.png"
         }
     ]
 }

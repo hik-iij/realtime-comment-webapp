@@ -400,7 +400,7 @@ WebSocket は切断中のイベント配信を保証しません。
 利用可能なアイコン一覧を返します。アイコンは設定ファイルに静的に登録し、サーバー起動中は `id` を変更しません。`id` は公開ユーザー情報の `icon_id` と対応します。
 アイコン数は少数の固定セットを想定するため、ページングは行いません。
 
-`assets_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`name`がそれに該当します。
+`asset_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`name`がそれに該当します。
 
 ```json
 {
@@ -408,7 +408,7 @@ WebSocket は切断中のイベント配信を保証しません。
         {
             "id": 1,
             "name": "default",
-            "assets_path": "assets/icons/default.svg"
+            "asset_path": "assets/icons/default.svg"
         }
     ]
 }
@@ -421,14 +421,14 @@ WebSocket は切断中のイベント配信を保証しません。
 利用可能なカスタム絵文字一覧を返します。カスタム絵文字は設定ファイルに静的に登録します。
 カスタム絵文字は少数の固定セットを想定するため、ページングは行いません。
 
-`assets_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`short_code`がそれに該当します。
+`asset_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`short_code`がそれに該当します。
 
 ```json
 {
     "items": [
         {
             "shortcode": "blank",
-            "assets_path": "assets/emojis/blank.png"
+            "asset_path": "assets/emojis/blank.png"
         }
     ]
 }

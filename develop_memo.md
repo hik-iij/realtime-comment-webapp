@@ -17,7 +17,7 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
             - 絵文字データはAPIから取得
         - アイコン
             - 画像データはAPIから取得
-            - `icon_id` で指定
+            - `icon.id` で指定
     - バックエンド設定ファイル
         - yamlで記述
         - 文字数制限
@@ -107,14 +107,17 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
 - 投稿所有者のトークンは、その投稿の編集・削除にだけ使えます
 - フロントエンド設定の JSON エクスポートには、`owner_token` を含めません。
 
-公開するユーザー情報は次の形にします。`acct_color` は設定ファイルで許可された値だけをサーバーが受け付けます。`icon_id` は `GET /api/v1/icons` で返す ID のいずれかを指定し、未登録の値は `404` で拒否します。
+公開するユーザー情報は次の形にします。`acct_color` は`#RRGGBB[AA]`値だけをサーバーが受け付けます。`icon.id` は `GET /api/v1/icons` で返す ID のいずれかを指定し、未登録の値は `404` で拒否します。
 
 ```json
 {
     "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
     "username": "hik",
     "acct_color": "#e974a3",
-    "icon_id": 1
+    "icon": {
+        "type": "preset",
+        "id": 1
+    }
 }
 ```
 
@@ -159,7 +162,10 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
         "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
         "username": "hik",
         "acct_color": "#e974a3",
-        "icon_id": 1
+        "icon": {
+            "type": "preset",
+            "id": 1
+        }
     }
 }
 ```
@@ -178,7 +184,10 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
         "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
         "username": "hik",
         "acct_color": "#e974a3",
-        "icon_id": 1
+        "icon": {
+            "type": "preset",
+            "id": 1
+        }
     },
     "owner_token": "session-owner-token"
 }
@@ -207,7 +216,10 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
                 "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
                 "username": "hik",
                 "acct_color": "#e974a3",
-                "icon_id": 1
+                "icon": {
+                    "type": "preset",
+                    "id": 1
+                }
             }
         }
     ],
@@ -267,7 +279,10 @@ Authorization: Bearer <session_owner_token>
         "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
         "username": "hik",
         "acct_color": "#e974a3",
-        "icon_id": 1
+        "icon": {
+            "type": "preset",
+            "id": 1
+        }
     }
 }
 ```
@@ -285,7 +300,10 @@ Authorization: Bearer <session_owner_token>
         "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
         "username": "hik",
         "acct_color": "#e974a3",
-        "icon_id": 1
+        "icon": {
+            "type": "preset",
+            "id": 1
+        }
     },
     "owner_token": "status-owner-token"
 }
@@ -312,7 +330,10 @@ Authorization: Bearer <session_owner_token>
                 "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
                 "username": "hik",
                 "acct_color": "#e974a3",
-                "icon_id": 1
+                "icon": {
+                    "type": "preset",
+                    "id": 1
+                }
             }
         }
     ],
@@ -379,7 +400,10 @@ WebSocket はサーバーからのイベント配信専用にします。
             "id": "acf12938-d532-4e11-8fdb-fdf04e23d587",
             "username": "hik",
             "acct_color": "#e974a3",
-            "icon_id": 1
+            "icon": {
+                "type": "preset",
+                "id": 1
+            }
         }
     }
 }
@@ -397,7 +421,7 @@ WebSocket は切断中のイベント配信を保証しません。
 
 `GET` `/api/v1/icons`
 
-利用可能なアイコン一覧を返します。アイコンは設定ファイルに静的に登録し、サーバー起動中は `id` を変更しません。`id` は公開ユーザー情報の `icon_id` と対応します。
+利用可能なアイコン一覧を返します。アイコンは設定ファイルに静的に登録し、サーバー起動中は `id` を変更しません。`id` は公開ユーザー情報の `icon.id` と対応します。
 アイコン数は少数の固定セットを想定するため、ページングは行いません。
 
 `asset_path` はバックエンドのパスです。フロントエンドからは`baseurl`を別途指定して`baseurl`と組み合わせて使います。 `alt` は`name`がそれに該当します。

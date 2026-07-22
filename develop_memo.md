@@ -408,7 +408,7 @@ WebSocket は切断中のイベント配信を保証しません。
         {
             "id": 1,
             "name": "default",
-            "url": "https://example.com/assets/icons/default.png",
+            "url": "https://example.com/assets/icons/default.png"
         }
     ]
 }

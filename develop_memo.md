@@ -85,6 +85,11 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
 - Backend: Go + Echo + WebSocket
 - Frontend: TypeScript + React
 
+## アセット
+アイコン・カスタム絵文字をアセットとしてBackend側で配信します。
+`PersistentVolume`に入れるかbackendのコンテナイメージに入れるかで迷いました。
+差し替えの頻度を考えるとbackend側でコンテナイメージでもって置いて更新時にビルドし直せばいいと考えました。
+
 ## API
 
 ### 共通仕様

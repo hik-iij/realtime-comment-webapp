@@ -118,7 +118,8 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
 ### 共通仕様
 
 - API のベース URL は `/api/v1`。リクエストとレスポンスの本文は JSON を使います。
-- `session_id` と `status_id` はサーバーが生成する推測困難な ID とします。クライアントはこれらの ID を指定して作成しません。
+- サーバーが生成する `session_id`、`status_id`、`event_id` には UUIDv7 を使います。クライアントはこれらの ID を指定して作成しません。
+- UUIDv7 は小文字の canonical 形式で扱います。UUIDv7 の時刻情報を利用して、投稿・イベントは概ね時系列に並べます。ただし、同一ミリ秒に発生した操作について、厳密な因果順序は保証しません。
 - 日時は UTC の RFC 3339 形式とします。並び順は特記がない限り `created_at` の昇順とします。
 - 読み取り系のレスポンスには、権限トークンを含めません。
 - 更新 API には `PATCH` を使います。リクエストに含まれた可変フィールドだけを変更し、含まれないフィールドは保持します。完全なリソース表現で置き換える API が必要になった場合だけ `PUT` を使います。
@@ -202,7 +203,7 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
 
 ```json
 {
-    "id": "01a8a5fa-81e7",
+    "id": "019f747c-719a-7000-8000-000000000001",
     "name": "sample_room",
     "description": "テスト用ルーム",
     "state": "open",
@@ -234,7 +235,7 @@ text/markdown が送れるように -> サーバで入力内容の検証 -> フ�
 {
     "items": [
         {
-            "id": "01a8a5fa-81e7",
+            "id": "019f747c-719a-7000-8000-000000000001",
             "name": "sample_room",
             "description": "テスト用ルーム",
             "state": "open",
@@ -286,7 +287,7 @@ Authorization: Bearer <session_owner_token>
 
 ```json
 {
-    "id": "01a8a5fa-81e7",
+    "id": "019f747c-719a-7000-8000-000000000001",
     "deleted_at": "2019-12-08T03:48:33.901Z"
 }
 ```
@@ -320,7 +321,7 @@ Authorization: Bearer <session_owner_token>
 ```json
 {
     "id": "019f747d-719a-74e0-888c-9f117d391252",
-    "session_id": "01a8a5fa-81e7",
+    "session_id": "019f747c-719a-7000-8000-000000000001",
     "created_at": "2019-12-08T03:48:33.901Z",
     "updated_at": null,
     "status": "hi",
@@ -350,7 +351,7 @@ Authorization: Bearer <session_owner_token>
     "items": [
         {
             "id": "019f747d-719a-74e0-888c-9f117d391252",
-            "session_id": "01a8a5fa-81e7",
+            "session_id": "019f747c-719a-7000-8000-000000000001",
             "created_at": "2019-12-08T03:48:33.901Z",
             "updated_at": null,
             "status": "hi",
@@ -398,7 +399,7 @@ Authorization: Bearer <status_owner_token>
 ```json
 {
     "id": "019f747d-719a-74e0-888c-9f117d391252",
-    "session_id": "01a8a5fa-81e7",
+    "session_id": "019f747c-719a-7000-8000-000000000001",
     "deleted_at": "2019-12-08T03:48:33.901Z"
 }
 ```
@@ -414,13 +415,13 @@ WebSocket はサーバーからのイベント配信専用にします。
 
 ```json
 {
-    "event_id": "01a8a600-0000",
+    "event_id": "019f747d-719b-7000-8000-000000000001",
     "type": "status.created",
-    "session_id": "01a8a5fa-81e7",
+    "session_id": "019f747c-719a-7000-8000-000000000001",
     "occurred_at": "2019-12-08T03:48:33.901Z",
     "data": {
         "id": "019f747d-719a-74e0-888c-9f117d391252",
-        "session_id": "01a8a5fa-81e7",
+        "session_id": "019f747c-719a-7000-8000-000000000001",
         "created_at": "2019-12-08T03:48:33.901Z",
         "updated_at": null,
         "status": "hi",

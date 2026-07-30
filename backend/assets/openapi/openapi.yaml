@@ -1,0 +1,827 @@
+openapi: 3.1.1
+info:
+  title: realtime-comment-webapp API
+  version: 1.0.0
+  description: |
+    半匿名のリアルタイムコメントウェブアプリの API です。
+
+    投稿の作成は REST API で行い、接続済みの利用者への差分配信には WebSocket を使用します。
+    ルーム、投稿、イベントのサーバー生成 ID は小文字の canonical 形式の UUIDv7 を使用します。
+servers:
+  - url: /api/v1
+tags:
+  - name: rooms
+    description: コメントルームの作成、取得、更新、削除を行います。
+  - name: statuses
+    description: ルーム内の投稿を作成、取得、更新、削除します。
+  - name: streamings
+    description: WebSocket でルームの差分イベントを受信します。
+  - name: assets
+    description: アイコンとカスタム絵文字の一覧を取得します。
+  - name: systems
+    description: バックエンドの稼働状態を確認します。
+paths:
+  /rooms:
+    get:
+      tags: [rooms]
+      operationId: listrooms
+      summary: ルーム一覧を取得する
+      description: ルームを作成日時順に取得します。カーソルは不透明な値として扱います。
+      parameters:
+        - name: state
+          in: query
+          description: 取得するルームの状態です。省略時はすべての状態を対象にします。
+          schema:
+            $ref: '#/components/schemas/roomState'
+        - name: limit
+          in: query
+          description: 1 回に取得する件数です。省略時は 20 件です。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: cursor
+          in: query
+          description: 前回のレスポンスに含まれていた次ページ用カーソルです。
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ルーム一覧を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/roomListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    post:
+      tags: [rooms]
+      operationId: createroom
+      summary: ルームを作成する
+      description: |
+        新しいコメントルームを作成します。成功時だけ、作成者が後続の更新・削除に使う
+        `owner_token` をレスポンスに含めます。トークンは安全に保存し、表示や設定エクスポートには
+        含めないでください。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateroomRequest'
+      responses:
+        '201':
+          description: ルームを作成しました。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Createdroom'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: 指定されたアイコン ID が登録されていません。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+  /rooms/{room_id}:
+    parameters:
+      - $ref: '#/components/parameters/roomID'
+    get:
+      tags: [rooms]
+      operationId: getroom
+      summary: ルーム詳細を取得する
+      description: 投稿一覧と所有者トークンを含まない、公開用のルーム情報を返します。
+      responses:
+        '200':
+          description: ルーム情報を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/room'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [rooms]
+      operationId: updateroom
+      summary: ルームを更新または終了する
+      description: |
+        指定された可変フィールドだけを更新します。`state` を `closed` にすると、
+        以後の新規投稿は受け付けられません。
+      security:
+        - OwnerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateroomRequest'
+      responses:
+        '200':
+          description: 更新後のルーム情報を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/room'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [rooms]
+      operationId: deleteroom
+      summary: ルームを削除する
+      description: ルーム所有者トークンを指定して削除します。実装は論理削除を想定します。
+      security:
+        - OwnerToken: []
+      responses:
+        '200':
+          description: 削除したルームの識別子と削除日時を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Deletedroom'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/statuses:
+    parameters:
+      - $ref: '#/components/parameters/roomID'
+    get:
+      tags: [statuses]
+      operationId: listStatuses
+      summary: ルーム内の投稿履歴を取得する
+      description: |
+        投稿履歴を取得します。`before` は指定した投稿 ID より古い投稿を取得するための
+        不透明なカーソルです。レスポンスの `items` は投稿 ID の昇順で返します。
+      parameters:
+        - name: limit
+          in: query
+          description: 1 回に取得する件数です。省略時は 50 件です。
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: before
+          in: query
+          description: これより古い投稿を取得するための投稿 ID です。
+          schema:
+            $ref: '#/components/schemas/UUIDv7'
+      responses:
+        '200':
+          description: 投稿履歴を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusListResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [statuses]
+      operationId: createStatus
+      summary: 投稿を作成する
+      description: |
+        開いているルームへ投稿を作成します。投稿の作成には `user.id` ごとの
+        スライディングウィンドウによるレート制限を適用します。成功時だけ投稿所有者用の
+        `owner_token` を返します。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStatusRequest'
+      responses:
+        '201':
+          description: 投稿を作成しました。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: ルームが終了済みであるため、新規投稿を作成できません。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: ルームまたは指定されたアイコン ID が存在しません。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /rooms/{room_id}/statuses/{status_id}:
+    parameters:
+      - $ref: '#/components/parameters/roomID'
+      - $ref: '#/components/parameters/StatusID'
+    get:
+      tags: [statuses]
+      operationId: getStatus
+      summary: 投稿を 1 件取得する
+      description: 所有者トークンを含まない、公開用の投稿情報を返します。
+      responses:
+        '200':
+          description: 投稿情報を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [statuses]
+      operationId: updateStatus
+      summary: 投稿本文を編集する
+      description: 投稿所有者トークンを指定して、投稿本文だけを更新します。
+      security:
+        - OwnerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: 更新後の投稿情報を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+    delete:
+      tags: [statuses]
+      operationId: deleteStatus
+      summary: 投稿を削除する
+      description: 投稿所有者またはルーム所有者のトークンを指定して投稿を削除します。
+      security:
+        - OwnerToken: []
+      responses:
+        '200':
+          description: 削除した投稿の識別子、ルーム ID、削除日時を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletedStatus'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /rooms/{room_id}/streaming:
+    parameters:
+      - $ref: '#/components/parameters/roomID'
+    get:
+      tags: [streamings]
+      operationId: streamroomEvents
+      summary: ルームの差分イベントを WebSocket で受信する
+      description: |
+        接続を WebSocket に切り替え、接続後に発生した差分イベントだけをサーバーから配信します。
+        クライアントから投稿操作を送信しません。履歴は別途投稿履歴 API で取得してください。
+
+        WebSocket イベントの形式は `x-websocket-event-schema` が指す `StreamEvent` です。
+        切断中のイベント配信は保証されないため、再接続時は接続後にイベントをバッファし、
+        REST API で履歴を取得してから統合します。
+      x-websocket-event-schema:
+        $ref: '#/components/schemas/StreamEvent'
+      responses:
+        '101':
+          description: WebSocket 接続への切り替えに成功しました。
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /icons:
+    get:
+      tags: [assets]
+      operationId: listIcons
+      summary: 利用可能なアイコン一覧を取得する
+      description: 登録済みの固定アイコン一覧を返します。ページネーションは行いません。
+      responses:
+        '200':
+          description: アイコン一覧を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IconListResponse'
+  /custom_emojis:
+    get:
+      tags: [assets]
+      operationId: listCustomEmojis
+      summary: 利用可能なカスタム絵文字一覧を取得する
+      description: 登録済みの固定カスタム絵文字一覧を返します。ページネーションは行いません。
+      responses:
+        '200':
+          description: カスタム絵文字一覧を返します。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomEmojiListResponse'
+  /health:
+    get:
+      tags: [systems]
+      operationId: getHealth
+      summary: バックエンドの稼働状態を取得する
+      description: Kubernetes の liveness probe および readiness probe に利用します。
+      responses:
+        '200':
+          description: バックエンドは稼働しています。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+components:
+  securitySchemes:
+    OwnerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: |
+        ルームまたは投稿の作成時だけサーバーが発行する所有者トークンです。
+        `Authorization: Bearer <owner_token>` として送信します。
+  parameters:
+    roomID:
+      name: room_id
+      in: path
+      required: true
+      description: 対象ルームの UUIDv7 です。
+      schema:
+        $ref: '#/components/schemas/UUIDv7'
+    StatusID:
+      name: status_id
+      in: path
+      required: true
+      description: 対象投稿の UUIDv7 です。
+      schema:
+        $ref: '#/components/schemas/UUIDv7'
+  headers:
+    RetryAfter:
+      description: 次に投稿できるまでの待機時間を秒数で表します。
+      schema:
+        type: integer
+        minimum: 0
+  responses:
+    BadRequest:
+      description: リクエスト本文、クエリ、パスの形式が不正です。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: 所有者トークンが不足しているか、無効です。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: 指定された操作を行う権限がありません。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: 指定されたリソースが存在しません。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: 入力値がアプリケーションの入力ポリシーに違反しています。
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    RateLimited:
+      description: user.id ごとの投稿レート制限を超えました。
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            error:
+              code: status_rate_limited
+              message: 投稿のレート制限を超えました
+  schemas:
+    UUID:
+      type: string
+      format: uuid
+      description: 小文字の canonical 形式で表した UUID です。
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    UUIDv7:
+      type: string
+      format: uuid
+      description: 小文字の canonical 形式で表した UUIDv7 です。
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+    roomState:
+      type: string
+      description: ルームの状態です。closed のルームでは新規投稿を作成できません。
+      enum: [open, closed]
+    IconReference:
+      type: object
+      description: 公開ユーザー情報に含める、登録済みアイコンへの参照です。
+      required: [type, id]
+      properties:
+        type:
+          type: string
+          description: アイコンの種類です。現在は preset だけを受け付けます。
+          enum: [preset]
+        id:
+          type: integer
+          minimum: 1
+          description: GET /icons で返される登録済みアイコン ID です。
+    User:
+      type: object
+      description: |
+        投稿者またはルーム所有者として公開する半匿名ユーザー情報です。
+        id は認証情報ではなく、編集・削除の権限判定には使用しません。
+      required: [id, username, acct_color, icon]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUID'
+        username:
+          type: string
+          minLength: 1
+          description: 表示名です。文字数上限はバックエンド設定に従います。
+        acct_color:
+          type: string
+          description: '#RRGGBB または #RRGGBBAA 形式の表示色です。'
+          pattern: '^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$'
+        icon:
+          $ref: '#/components/schemas/IconReference'
+    room:
+      type: object
+      description: 公開用のコメントルーム情報です。所有者トークンは含めません。
+      required: [id, name, description, state, created_at, updated_at, owner]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUIDv7'
+        name:
+          type: string
+          description: ルーム名です。文字数上限はバックエンド設定に従います。
+        description:
+          type: string
+          description: ルームの説明です。文字数上限はバックエンド設定に従います。
+        state:
+          $ref: '#/components/schemas/roomState'
+        created_at:
+          type: string
+          format: date-time
+          description: ルームを作成した UTC 時刻です。
+        updated_at:
+          type: string
+          format: date-time
+          description: ルームを最後に更新した UTC 時刻です。
+        owner:
+          $ref: '#/components/schemas/User'
+    Status:
+      type: object
+      description: 公開用の投稿情報です。所有者トークンは含めません。
+      required: [id, room_id, created_at, updated_at, status, user]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUIDv7'
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        created_at:
+          type: string
+          format: date-time
+          description: 投稿を作成した UTC 時刻です。
+        updated_at:
+          type: [string, 'null']
+          format: date-time
+          description: 投稿を編集した UTC 時刻です。未編集の場合は null です。
+        status:
+          type: string
+          minLength: 1
+          description: Markdown の元テキストです。文字数上限はバックエンド設定に従います。
+        user:
+          $ref: '#/components/schemas/User'
+    CreateroomRequest:
+      type: object
+      description: ルームを作成するための入力です。
+      required: [name, owner]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: ルーム名です。
+        description:
+          type: string
+          default: ''
+          description: ルームの説明です。省略時は空文字です。
+        state:
+          $ref: '#/components/schemas/roomState'
+          default: open
+          description: 初期状態です。省略時は open です。
+        owner:
+          $ref: '#/components/schemas/User'
+    UpdateroomRequest:
+      type: object
+      description: ルームを部分更新するための入力です。少なくとも 1 フィールドを指定します。
+      minProperties: 1
+      properties:
+        name:
+          type: string
+          minLength: 1
+          description: 更新後のルーム名です。
+        description:
+          type: string
+          description: 更新後のルーム説明です。空文字を指定できます。
+        state:
+          $ref: '#/components/schemas/roomState'
+    Createdroom:
+      allOf:
+        - $ref: '#/components/schemas/room'
+        - type: object
+          description: ルーム作成成功時だけ返す所有者トークンを含むレスポンスです。
+          required: [owner_token]
+          properties:
+            owner_token:
+              type: string
+              minLength: 1
+              description: ルームの更新・削除に使う不透明な所有者トークンです。
+    roomListResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/room'
+        next_cursor:
+          type: [string, 'null']
+          description: 次ページ用カーソルです。これ以上のページがない場合は null です。
+    CreateStatusRequest:
+      type: object
+      description: 投稿を作成するための入力です。
+      required: [status, user]
+      properties:
+        status:
+          type: string
+          minLength: 1
+          description: Markdown の元テキストです。
+        user:
+          $ref: '#/components/schemas/User'
+    UpdateStatusRequest:
+      type: object
+      description: 投稿本文を更新するための入力です。投稿者情報は更新できません。
+      required: [status]
+      properties:
+        status:
+          type: string
+          minLength: 1
+          description: 更新後の Markdown 元テキストです。
+    CreatedStatus:
+      allOf:
+        - $ref: '#/components/schemas/Status'
+        - type: object
+          description: 投稿作成成功時だけ返す所有者トークンを含むレスポンスです。
+          required: [owner_token]
+          properties:
+            owner_token:
+              type: string
+              minLength: 1
+              description: 投稿の編集・削除に使う不透明な所有者トークンです。
+    StatusListResponse:
+      type: object
+      required: [items, next_before]
+      properties:
+        items:
+          type: array
+          description: 表示しやすいよう投稿 ID の昇順で並んだ投稿一覧です。
+          items:
+            $ref: '#/components/schemas/Status'
+        next_before:
+          type: [string, 'null']
+          description: 次に古い投稿を取得するためのカーソルです。これ以上古い投稿がない場合は null です。
+    Deletedroom:
+      type: object
+      description: 削除済みルームを表す最小限の情報です。
+      required: [id, deleted_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUIDv7'
+        deleted_at:
+          type: string
+          format: date-time
+          description: ルームを削除した UTC 時刻です。
+    DeletedStatus:
+      type: object
+      description: 削除済み投稿を表す最小限の情報です。
+      required: [id, room_id, deleted_at]
+      properties:
+        id:
+          $ref: '#/components/schemas/UUIDv7'
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        deleted_at:
+          type: string
+          format: date-time
+          description: 投稿を削除した UTC 時刻です。
+    IconAsset:
+      type: object
+      description: バックエンドが配信するアイコンのメタデータです。
+      required: [id, name, asset_path]
+      properties:
+        id:
+          type: integer
+          minimum: 1
+        name:
+          type: string
+          description: アイコン名です。代替テキストとしても使用できます。
+        asset_path:
+          type: string
+          description: バックエンドの base URL と結合して利用するアセットパスです。
+          example: assets/icons/default.svg
+    IconListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/IconAsset'
+    CustomEmojiAsset:
+      type: object
+      description: バックエンドが配信するカスタム絵文字のメタデータです。
+      required: [shortcode, asset_path]
+      properties:
+        shortcode:
+          type: string
+          description: ':shortcode: の shortcode 部分です。'
+        asset_path:
+          type: string
+          description: バックエンドの base URL と結合して利用するアセットパスです。
+          example: assets/emojis/blank.png
+    CustomEmojiListResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomEmojiAsset'
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+          description: 稼働状態です。
+    ErrorDetail:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: 機械可読なエラーコードです。
+          examples:
+            - status_too_long
+            - status_rate_limited
+        message:
+          type: string
+          description: 利用者に表示できるエラー内容です。
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+    StreamEvent:
+      oneOf:
+        - $ref: '#/components/schemas/StatusCreatedEvent'
+        - $ref: '#/components/schemas/StatusUpdatedEvent'
+        - $ref: '#/components/schemas/StatusDeletedEvent'
+        - $ref: '#/components/schemas/roomUpdatedEvent'
+        - $ref: '#/components/schemas/roomClosedEvent'
+        - $ref: '#/components/schemas/roomDeletedEvent'
+      discriminator:
+        propertyName: type
+      description: WebSocket で配信する差分イベントです。所有者トークンは含めません。
+    StatusCreatedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: status.created
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/Status'
+    StatusUpdatedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: status.updated
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/Status'
+    StatusDeletedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: status.deleted
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/DeletedStatus'
+    roomUpdatedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: room.updated
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/room'
+    roomClosedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: room.closed
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/room'
+    roomDeletedEvent:
+      type: object
+      required: [event_id, type, room_id, occurred_at, data]
+      properties:
+        event_id:
+          $ref: '#/components/schemas/UUIDv7'
+        type:
+          type: string
+          const: room.deleted
+        room_id:
+          $ref: '#/components/schemas/UUIDv7'
+        occurred_at:
+          type: string
+          format: date-time
+        data:
+          $ref: '#/components/schemas/Deletedroom'

@@ -12,11 +12,11 @@ flowchart LR
     Frontend -->|"GET / POST / PATCH / DELETE"| RestApi["REST API<br/>Go + Echo"]
     RestApi -->|"JSON response"| Frontend
 
-    Frontend -->|"WebSocket connect"| Streaming["Streaming endpoint<br/>/sessions/{session_id}/streaming"]
-    Streaming -->|"status.* and session.* events"| Frontend
+    Frontend -->|"WebSocket connect"| Streaming["Streaming endpoint<br/>/rooms/{room_id}/streaming"]
+    Streaming -->|"status.* and room.* events"| Frontend
 
-    RestApi --> Service["Session and status service"]
-    Service --> Store[("In-memory session and status store")]
+    RestApi --> Service["room and status service"]
+    Service --> Store[("In-memory room and status store")]
     Store --> Service
 
     Service -->|"publish state changes"| Hub["WebSocket hub"]
@@ -27,9 +27,9 @@ flowchart LR
     Assets --> RestApi
 ```
 
-- サーバーの再起動時にインメモリのセッション・投稿データは初期化されます
+- サーバーの再起動時にインメモリのルーム・投稿データは初期化されます
 - アイコンとカスタム絵文字の一覧・画像はバックエンド側で管理し、フロントエンドは API の応答を使って表示します
-- 投稿・セッション・イベントのサーバー生成 ID には UUIDv7 を使います
+- 投稿・ルーム・イベントのサーバー生成 ID には UUIDv7 を使います
 
 ## コンポーネント図
 
@@ -54,29 +54,29 @@ flowchart TB
 
     subgraph Backend[Go backend]
         Router["Echo router and middleware"]
-        SessionHandler["Session handler"]
+        roomHandler["room handler"]
         StatusHandler["Status handler"]
         StreamingHandler["Streaming handler"]
         AssetHandler["Asset handler"]
-        SessionService["Session service"]
+        roomService["room service"]
         StatusService["Status service"]
         Validator["Input validator"]
         Store[("In-memory store")]
         Hub["WebSocket hub"]
         AssetRegistry["Asset registry"]
 
-        Router --> SessionHandler
+        Router --> roomHandler
         Router --> StatusHandler
         Router --> StreamingHandler
         Router --> AssetHandler
 
-        SessionHandler --> SessionService
+        roomHandler --> roomService
         StatusHandler --> StatusService
-        SessionHandler --> Validator
+        roomHandler --> Validator
         StatusHandler --> Validator
-        SessionService --> Store
+        roomService --> Store
         StatusService --> Store
-        SessionService --> Hub
+        roomService --> Hub
         StatusService --> Hub
         StreamingHandler --> Hub
         AssetHandler --> AssetRegistry
@@ -94,7 +94,7 @@ flowchart TB
     AssetRegistry -->|"asset metadata and files"| Renderer
 ```
 
-- `StatusService` と `SessionService` は、状態を変更した後に WebSocket Hub へイベントを発行します。
+- `StatusService` と `roomService` は、状態を変更した後に WebSocket Hub へイベントを発行します。
 - `Validator` は `config.yaml` の文字数制限と、許可されたアイコン ID を検証します。
 - `AssetRegistry` は JSON マニフェストを読み込み、アイコン・カスタム絵文字の一覧 API と静的アセット配信に利用します。
 - `Client state` は REST の投稿履歴と WebSocket の差分イベントを統合し、再接続時には履歴 API の結果を正とします。
@@ -111,23 +111,23 @@ sequenceDiagram
     participant Streaming as Streaming endpoint
     participant Hub as WebSocket hub
     participant API as REST API
-    participant Store as Session and status store
+    participant Store as room and status store
     participant Other as Another client
 
-    Client->>Streaming: GET /sessions/{session_id}/streaming
+    Client->>Streaming: GET /rooms/{room_id}/streaming
     Streaming->>Hub: Register client
     Hub-->>Streaming: Registration complete
     Streaming-->>Client: WebSocket connected
     Note over Client: Buffer received events
 
-    Client->>API: GET /sessions/{session_id}/statuses?limit=50
+    Client->>API: GET /rooms/{room_id}/statuses?limit=50
     API->>Store: Read current status history
     Store-->>API: items and next_before
     API-->>Client: History response
     Client->>Client: Render history items
     Client->>Client: Sort buffered events by UUIDv7 event_id and apply them
 
-    Other->>API: POST /sessions/{session_id}/statuses
+    Other->>API: POST /rooms/{room_id}/statuses
     API->>Store: Validate input and create a UUIDv7 status_id
     Store-->>API: Created status
     API->>Hub: Publish status.created
@@ -138,7 +138,7 @@ sequenceDiagram
     Note over Client,Hub: On reconnect, connect, buffer events, and fetch history again
 ```
 
-- `GET /sessions/{session_id}/statuses` は投稿履歴を返します。`before` と `next_before` を使い、古い履歴を追加で取得します
+- `GET /rooms/{room_id}/statuses` は投稿履歴を返します。`before` と `next_before` を使い、古い履歴を追加で取得します
 - WebSocket は履歴を再送せず、`status.created`、`status.updated`、`status.deleted` などの差分イベントだけを配信します
 - UUIDv7 の順序は概ね時系列ではありますが、同一ミリ秒に発生した操作の厳密な因果順序は保証しないものとします
 - 削除は冪等に扱います
